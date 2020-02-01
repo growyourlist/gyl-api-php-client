@@ -3,29 +3,62 @@
 /**
  * PHP Client for the growyourlist API.
  */
-class GylApi {
+class GylApi
+{
 
-  /**
-   * The API key to use when making requests to the API.
-   */
+	/**
+	 * The API key to use when making requests to the API.
+	 */
 	private $apiKey = '';
 
-  /**
-   * The base URL of the admin part of the API.
-   */
+	/**
+	 * The base URL of the admin part of the API.
+	 */
 	private $apiUrl = '';
 
-	function __construct($apiKey, $apiUrl) {
-    $this->apiKey = $apiKey;
+	function __construct($apiKey, $apiUrl)
+	{
+		$this->apiKey = $apiKey;
 		$this->apiUrl = $apiUrl . ((substr($apiUrl, -1) !== '/') ? '/' : '');
 	}
 
 	/**
+	 * Sends a single email to a single recipient.
+	 * 
+	 * The $toEmailAddress and $fromEmailAddress can be basic, single email
+	 * addresses like "test@1example.org" or they can include a name and be in
+	 * the format: "Test Person <test@1example.org>".
+	 * 
+	 * The body can be:
+	 * - a basic text string, in which case only a text email will be sent.
+	 * - a string containing "html>", in which case a HTML email will be sent.
+	 * - an array with two option properties: 'text' and 'html'. The value of the
+	 *   'text' property should be a basic text version of the email. The value of
+	 *   the 'html' property should be a html version of the email.
+	 * 
+	 * @param string $toEmailAddress The email address to send the email to.
+	 * @param string $subject The subject line of the email.
+	 * @param mixed $body The content of the email. See notes for options.
+	 * @param string $fromEmailAddress Optional. The email address to send from.
+	 * Must be validated in SES first.
+	 */
+	function sendSingleEmail($toEmailAddress, $subject, $body, $fromEmailAddress = '')
+	{
+		return $this->_postRequest("send-single-email", (object) [
+			'toEmailAddress' => $toEmailAddress,
+			'subject' => $subject,
+			'body' => (is_array($body) ? ((object) $body) : $body),
+			'fromEmailAddress' => $fromEmailAddress,
+		]);
+	}
+
+	/**
 	 * Creates a new subscriber with the given data. Options can include:
-   * ['trigger' => ['type' => '<type>','id' => '<id>']]
+	 * ['trigger' => ['type' => '<type>','id' => '<id>']]
 	 * @throws Exception
 	 */
-	function postSubscriber($subscriberData, $options = null) {
+	function postSubscriber($subscriberData, $options = null)
+	{
 		$this->validateSubscriber($subscriberData);
 		$subscriberFull = array_merge([
 			'deliveryTimePreference' => $this->generateDtp($subscriberData),
@@ -39,24 +72,25 @@ class GylApi {
 			$triggerType = $trigger['type'];
 			if (!empty($trigger['id'])) {
 				$params = '?triggerType=' . urlencode($triggerType) . '&triggerId='
-				. urlencode($trigger['id']);
+					. urlencode($trigger['id']);
 			}
 		}
-		return $this->_postRequest("subscriber$params", (object)$subscriberFull);
+		return $this->_postRequest("subscriber$params", (object) $subscriberFull);
 	}
 
 	/**
 	 * Triggers an autoresponder for the given subscriber.
 	 */
-	function triggerAutoresponder($subscriberData, $options) {
+	function triggerAutoresponder($subscriberData, $options)
+	{
 		$trigger = $options['trigger'];
 		$triggerType = $trigger['type'];
 		$params = '?triggerType=' . urlencode($triggerType) . '&triggerId='
-		. urlencode($trigger['id']);
+			. urlencode($trigger['id']);
 		$url = "subscriber/trigger-autoresponder$params";
 		return $this->_postRequest(
 			"subscriber/trigger-autoresponder$params",
-			(object)$subscriberData
+			(object) $subscriberData
 		);
 	}
 
@@ -64,16 +98,18 @@ class GylApi {
 	 * Updates an existing subscriber.
 	 * @throws Exception
 	 */
-	function updateSubscriber($subscriberData) {
+	function updateSubscriber($subscriberData)
+	{
 		$this->validateSubscriber($subscriberData);
-		$this->_putRequest("subscriber", (object)$subscriberData);
+		$this->_putRequest("subscriber", (object) $subscriberData);
 	}
 
 	/**
 	 * Gets a subscriber's status by email.
 	 * @throws Exception
 	 */
-	function getSubscriberStatus($email, $opts = []) {
+	function getSubscriberStatus($email, $opts = [])
+	{
 		if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
 			throw new Error('Valid email required for subscriber retrieval');
 		}
@@ -81,10 +117,11 @@ class GylApi {
 		try {
 			$response = $this->_getRequest("subscriber/status?email=$encodedEmail");
 			return json_decode($response);
-		}
-		catch (Exception $ex) {
-			if ($ex->getCode() === 404 && array_key_exists('onNotFound', $opts) &&
-					$opts['onNotFound'] !== 'error') {
+		} catch (Exception $ex) {
+			if (
+				$ex->getCode() === 404 && array_key_exists('onNotFound', $opts) &&
+				$opts['onNotFound'] !== 'error'
+			) {
 				return $opts['onNotFound'];
 			}
 			throw $ex;
@@ -96,7 +133,8 @@ class GylApi {
 	 * could not be found.
 	 * @throws Exception
 	 */
-	function changeEmail($oldEmail, $newEmail) {
+	function changeEmail($oldEmail, $newEmail)
+	{
 		$gylStatus = $this->getSubscriberStatus($oldEmail, ['onNotFound' => null]);
 		if (!$gylStatus) {
 			return FALSE;
@@ -112,14 +150,14 @@ class GylApi {
 	 * Gets a full subscriber or returns the $fallback if no subscriber is found.
 	 * @throws Exception
 	 */
-	function getSubscriber($email, $fallback = null) {
+	function getSubscriber($email, $fallback = null)
+	{
 		$encodedEmail = urlencode($email);
 		$subscriber = null;
 		try {
 			$response = $this->_getRequest("subscriber?email=$encodedEmail");
 			$subscriber = json_decode($response);
-		}
-		catch (Exception $ex) {
+		} catch (Exception $ex) {
 			if ($ex->getCode() === 404) {
 				return $fallback;
 			}
@@ -129,8 +167,8 @@ class GylApi {
 
 	/**
 	 * Returns truthy value (i.e. subscriber status) if and only if the email
-   * exists as a subscriber and that subscriber has the given tag. Returns false
-   * in all other cases, including errors! Probably don't use in production.
+	 * exists as a subscriber and that subscriber has the given tag. Returns false
+	 * in all other cases, including errors! Probably don't use in production.
 	 * For example, as part of the following logic:
 	 *
 	 *   $gylStatus = $gylApi->getExistsAndHasTag('person@example.com', 'a-tag');
@@ -142,15 +180,15 @@ class GylApi {
 	 *   }
 	 *
 	 */
-	function getExistsAndHasTag($email, $tag) {
+	function getExistsAndHasTag($email, $tag)
+	{
 		try {
 			$status = $this->getSubscriberStatus($email);
 			if (isset($status->tags) && in_array($tag, $status->tags)) {
 				return $status;
 			}
 			return false;
-		}
-		catch (Exception $ex) {
+		} catch (Exception $ex) {
 			return false;
 		}
 	}
@@ -159,7 +197,8 @@ class GylApi {
 	 * Deletes a subscriber by subscriberId.
 	 * @throws Exception
 	 */
-	function deleteSubscriber($subscriberId) {
+	function deleteSubscriber($subscriberId)
+	{
 		return $this->_deleteRequest("subscriber?subscriberId=$subscriberId");
 	}
 
@@ -167,51 +206,60 @@ class GylApi {
 	 * Unsubscribes a subscriber. Requires an array with a key 'email'.
 	 * @throws Exception
 	 */
-	function unsubscribe($subscriberData) {
+	function unsubscribe($subscriberData)
+	{
 		$this->validateUnsubscribe($subscriberData);
 		return $this->_postRequest(
 			'subscriber/unsubscribe',
-			(object)$subscriberData
+			(object) $subscriberData
 		);
 	}
 
 	/**
 	 * Tags a subscriber. Requires an array with keys 'email' and 'tag'.
 	 */
-	function tag($subscriberData) {
+	function tag($subscriberData)
+	{
 		$this->validateTag($subscriberData);
-		return $this->_postRequest('subscriber/tag', (object)$subscriberData);
+		return $this->_postRequest('subscriber/tag', (object) $subscriberData);
 	}
 
 	/**
 	 * Untags a subscriber. Requires an array with keys 'email' and 'tag'.
 	 * @throws Exception
 	 */
-	function untag($subscriberData) {
+	function untag($subscriberData)
+	{
 		$this->validateUntag($subscriberData);
-		return $this->_postRequest('subscriber/untag', (object)$subscriberData);
+		return $this->_postRequest('subscriber/untag', (object) $subscriberData);
 	}
 
 	/**
 	 * Validates subscriber data.
 	 * @throws Exception
 	 */
-	protected function validateSubscriber($subscriberData) {
-		if (empty($subscriberData['email'])
-			|| !filter_var($subscriberData['email'], FILTER_VALIDATE_EMAIL)) {
+	protected function validateSubscriber($subscriberData)
+	{
+		if (
+			empty($subscriberData['email'])
+			|| !filter_var($subscriberData['email'], FILTER_VALIDATE_EMAIL)
+		) {
 			throw new Exception('Subscriber must have a valid email');
 		}
 		if (isset($subscriberData['tags']) && !is_array($subscriberData['tags'])) {
 			throw new Exception('If tags is provided, it must be an array');
 		}
 	}
-	
+
 	/**
 	 * Validates data required for unsubscribe.
 	 */
-	protected function validateUnsubscribe($subscriberData) {
-		if (empty($subscriberData['email'])
-			|| !filter_var($subscriberData['email'], FILTER_VALIDATE_EMAIL)) {
+	protected function validateUnsubscribe($subscriberData)
+	{
+		if (
+			empty($subscriberData['email'])
+			|| !filter_var($subscriberData['email'], FILTER_VALIDATE_EMAIL)
+		) {
 			throw new Exception('Subscriber must have a valid email');
 		}
 	}
@@ -219,9 +267,12 @@ class GylApi {
 	/**
 	 * Validates data required for tag.
 	 */
-	protected function validateTag($subscriberData) {
-		if (empty($subscriberData['email'])
-			|| !filter_var($subscriberData['email'], FILTER_VALIDATE_EMAIL)) {
+	protected function validateTag($subscriberData)
+	{
+		if (
+			empty($subscriberData['email'])
+			|| !filter_var($subscriberData['email'], FILTER_VALIDATE_EMAIL)
+		) {
 			throw new Exception('Subscriber must have a valid email');
 		}
 		if (empty($subscriberData['tag'])) {
@@ -232,14 +283,19 @@ class GylApi {
 	/**
 	 * Validates data required for untag.
 	 */
-	protected function validateUntag($subscriberData) {
-		if (empty($subscriberData['email'])
-			|| !filter_var($subscriberData['email'], FILTER_VALIDATE_EMAIL)) {
+	protected function validateUntag($subscriberData)
+	{
+		if (
+			empty($subscriberData['email'])
+			|| !filter_var($subscriberData['email'], FILTER_VALIDATE_EMAIL)
+		) {
 			throw new Exception('Subscriber must have a valid email');
 		}
-		if (empty($subscriberData['tag'])
+		if (
+			empty($subscriberData['tag'])
 			|| !ctype_alnum($subscriberData['tag'])
-			|| (strlen($subscriberData['tag']) > 26)) {
+			|| (strlen($subscriberData['tag']) > 26)
+		) {
 			throw new Exception('A valid tag name must be provided');
 		}
 	}
@@ -248,58 +304,62 @@ class GylApi {
 	 * Generates a delivery time preference for the subscriber based on the
 	 * timezone of the subscriber and the current time.
 	 */
-	protected function generateDtp($subscriberData) {
+	protected function generateDtp($subscriberData)
+	{
 		$now = new DateTime();
 		try {
 			if (!empty($subscriberData['timezone'])) {
 				$now->setTimezone(new DateTimeZone($subscriberData['timezone']));
-			}
-			else {
+			} else {
 				$now->setTimezone(new DateTimeZone('America/Vancouver'));
 			}
-		}
-		catch (Exception $ex) {
+		} catch (Exception $ex) {
 			error_log('GYL: error setting timezone ' . $timezone);
 		}
 
-		return (object)[
-			'hour' => (int)$now->format('G'),
-			'minute' => (int)$now->format('i')
+		return (object) [
+			'hour' => (int) $now->format('G'),
+			'minute' => (int) $now->format('i')
 		];
 	}
 
 	/**
 	 * Performs a HTTP post request to the API.
 	 */
-	private function _postRequest($endpoint, $bodyObject) {
+	private function _postRequest($endpoint, $bodyObject)
+	{
 		return $this->_doRequest($endpoint, 'POST', $bodyObject);
 	}
 
 	/**
 	 * Performs a HTTP put request to the API.
 	 */
-	private function _putRequest($endpoint, $bodyObject) {
+	private function _putRequest($endpoint, $bodyObject)
+	{
 		return $this->_doRequest($endpoint, 'PUT', $bodyObject);
 	}
 
 	/**
 	 * Performs a HTTP get request to the API.
 	 */
-	private function _getRequest($endpoint) {
+	private function _getRequest($endpoint)
+	{
 		return $this->_doRequest($endpoint);
 	}
-	
+
 	/**
 	 * Performs a HTTP delete request to the API.
 	 */
-	private function _deleteRequest($endpoint) {
+	private function _deleteRequest($endpoint)
+	{
 		return $this->_doRequest($endpoint, 'DELETE');
 	}
 
 	/**
 	 * Performs a HTTP request to the API.
 	 */
-	private function _doRequest($endpoint, $method = 'GET', $bodyObject = null) {
+	private function _doRequest($endpoint, $method = 'GET', $bodyObject = null)
+	{
 		$url = $this->apiUrl . $endpoint;
 		$contentType = '';
 		if ($method === 'PUT' || $method === 'POST') {
@@ -307,8 +367,8 @@ class GylApi {
 		}
 		$params = [
 			'http' => [
-        'header'  => $this->_generateHeader($contentType),
-        'method'  => $method,
+				'header'  => $this->_generateHeader($contentType),
+				'method'  => $method,
 				'timeout' => 2,
 				'ignore_errors' => true,
 			]
@@ -326,7 +386,7 @@ class GylApi {
 		if (!preg_match('/\b\d\d\d\b/', $responseStatus, $matches)) {
 			throw new Exception('Failed to interact with API: no response code.');
 		}
-		$responseCode = (int)$matches[0];
+		$responseCode = (int) $matches[0];
 		if ($responseCode < 200 || $responseCode >= 400) {
 			throw new Exception($response, $responseCode);
 		}
@@ -336,7 +396,8 @@ class GylApi {
 	/**
 	 * Generates the header for requests to the API.
 	 */
-	private function _generateHeader($contentType = '') {
+	private function _generateHeader($contentType = '')
+	{
 		$header = '';
 		if ($contentType) {
 			$header .= "Content-type: $contentType\r\n";
