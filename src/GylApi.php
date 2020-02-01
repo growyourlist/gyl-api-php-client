@@ -139,7 +139,6 @@ class GylApi
 		if (!$gylStatus) {
 			return FALSE;
 		}
-		$encodedEmail = urlencode($email);
 		return $this->_postRequest("subscriber/change-email", [
 			'oldEmail' => $oldEmail,
 			'newEmail' => $newEmail
@@ -314,7 +313,7 @@ class GylApi
 				$now->setTimezone(new DateTimeZone('America/Vancouver'));
 			}
 		} catch (Exception $ex) {
-			error_log('GYL: error setting timezone ' . $timezone);
+			error_log('GYL: error setting timezone');
 		}
 
 		return (object) [
