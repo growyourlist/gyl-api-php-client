@@ -481,7 +481,7 @@ class GylApi
 		if ($contentType) {
 			$header .= "Content-type: $contentType\r\n";
 		}
-		$header .= 'x-api-key: ' . $this->apiKey . "\r\n";
+		$header .= 'X-Gyl-Auth-Key: ' . $this->apiKey . "\r\n";
 		return $header;
 	}
 }
