@@ -156,7 +156,7 @@ class GylApi
 	 */
 	function getSubscriberStatus($email, $opts = [])
 	{
-		if (empty($email) || !(strlen($email) > 256)) {
+		if (empty($email) || (strlen($email) > 256)) {
 			throw new Exception('Valid email required for subscriber retrieval');
 		}
 		$encodedEmail = urlencode($email);
