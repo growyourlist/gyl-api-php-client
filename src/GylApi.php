@@ -26,7 +26,7 @@ class GylApi
 	function __construct($apiKey = '', $apiUrl = '')
 	{
 		$this->apiKey = $apiKey;
-		$this->apiUrl = $apiUrl . ((substr($apiUrl, -1) !== '/') ? '/' : '');
+		$this->apiUrl = ((substr($apiUrl, -1) === '/') ? substr($apiUrl, 0, strlen($apiUrl) - 1) : $apiUrl);
 	}
 
 	/**
@@ -92,7 +92,7 @@ class GylApi
 		);
 
 		// Post the single email send to the GYL API.
-		return $this->_postRequest("send-single-email", (object) [
+		return $this->_postRequest("/send-single-email", (object) [
 			'toEmailAddress' => $toEmailAddress,
 			'subject' => $subject,
 			'body' => $bodyObject,
@@ -123,7 +123,7 @@ class GylApi
 					. urlencode($trigger['id']);
 			}
 		}
-		return $this->_postRequest("subscriber$params", (object) $subscriberFull);
+		return $this->_postRequest("/subscriber$params", (object) $subscriberFull);
 	}
 
 	/**
@@ -137,7 +137,7 @@ class GylApi
 			. urlencode($trigger['id']);
 		$url = "subscriber/trigger-autoresponder$params";
 		return $this->_postRequest(
-			"subscriber/trigger-autoresponder$params",
+			"/subscriber/trigger-autoresponder$params",
 			(object) $subscriberData
 		);
 	}
@@ -161,7 +161,7 @@ class GylApi
 		}
 		$encodedEmail = urlencode($email);
 		try {
-			$response = $this->_getRequest("subscriber/status?email=$encodedEmail");
+			$response = $this->_getRequest("/subscriber/status?email=$encodedEmail");
 			return json_decode($response);
 		} catch (Exception $ex) {
 			if (
@@ -183,7 +183,7 @@ class GylApi
 		$encodedEmail = urlencode($email);
 		$subscriber = null;
 		try {
-			$response = $this->_getRequest("subscriber?email=$encodedEmail");
+			$response = $this->_getRequest("/subscriber?email=$encodedEmail");
 			$subscriber = json_decode($response);
 		} catch (Exception $ex) {
 			if ($ex->getCode() === 404) {
@@ -227,7 +227,7 @@ class GylApi
 	 */
 	function deleteSubscriber($subscriberId)
 	{
-		return $this->_deleteRequest("subscriber?subscriberId=$subscriberId");
+		return $this->_deleteRequest("/subscriber?subscriberId=$subscriberId");
 	}
 
 	/**
@@ -238,18 +238,46 @@ class GylApi
 	{
 		$this->validateUnsubscribe($subscriberData);
 		return $this->_postRequest(
-			'subscriber/unsubscribe',
+			'/subscriber/unsubscribe',
 			(object) $subscriberData
 		);
 	}
 
 	/**
 	 * Tags a subscriber. Requires an array with keys 'email' and 'tag'.
+	 * Optional $opts must be an array with values:
+	 * [ 'ignoreSubscriberNotFound' => boolean ]
+	 * If ignoreSubscriberNotFound is truthy, then no error will be thrown if
+	 * the subscriber is not found.
 	 */
-	function tag($subscriberData)
+	function tag($subscriberData, $opts = [])
 	{
+		$fullOpts = array_merge(
+			[
+				'ignoreSubscriberNotFound' => false
+			],
+			$opts
+		);
+		$ignoreNotFound = !!$fullOpts['ignoreSubscriberNotFound'];
 		$this->validateTag($subscriberData);
-		return $this->_postRequest('subscriber/tag', (object) $subscriberData);
+		$params = '';
+		if ($opts && isset($opts['trigger'], $opts['trigger']['type'])) {
+			$trigger = $opts['trigger'];
+			$triggerType = $trigger['type'];
+			if (!empty($trigger['id'])) {
+				$params = '?triggerType=' . urlencode($triggerType) . '&triggerId='
+					. urlencode($trigger['id']);
+			}
+		}
+		try {
+			return $this->_postRequest("/subscriber/tag$params", (object) $subscriberData);
+		} catch (Exception $ex) {
+			if ($ex->getCode() === 404 && array_key_exists('onNotFound', $fullOpts) &&
+				$opts['onNotFound'] !== 'error') {
+				return $opts['onNotFound'];
+			}
+			throw $ex;
+		}
 	}
 
 	/**
@@ -259,7 +287,7 @@ class GylApi
 	function untag($subscriberData)
 	{
 		$this->validateUntag($subscriberData);
-		return $this->_postRequest('subscriber/untag', (object) $subscriberData);
+		return $this->_postRequest('/subscriber/untag', (object) $subscriberData);
 	}
 
 	/**
@@ -372,8 +400,8 @@ class GylApi
 		}
 		if (
 			empty($subscriberData['tag'])
-			|| !ctype_alnum($subscriberData['tag'])
-			|| (strlen($subscriberData['tag']) > 26)
+			|| !ctype_alnum(str_replace(["-", "_"], "", $subscriberData['tag']))
+			|| (strlen($subscriberData['tag']) > 64)
 		) {
 			throw new Exception('A valid tag name must be provided');
 		}
@@ -448,7 +476,7 @@ class GylApi
 			'http' => [
 				'header'  => $this->_generateHeader($contentType),
 				'method'  => $method,
-				'timeout' => 2,
+				'timeout' => 5,
 				'ignore_errors' => true,
 			]
 		];
