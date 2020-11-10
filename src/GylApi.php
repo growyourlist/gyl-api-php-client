@@ -23,7 +23,7 @@ class GylApi
 	 * @param string $apiKey
 	 * @param string $apiUrl
 	 */
-	function __construct($apiKey = '', $apiUrl = '')
+	public function __construct($apiKey = '', $apiUrl = '')
 	{
 		$this->apiKey = $apiKey;
 		$this->apiUrl = ((substr($apiUrl, -1) === '/') ? substr($apiUrl, 0, strlen($apiUrl) - 1) : $apiUrl);
@@ -31,16 +31,16 @@ class GylApi
 
 	/**
 	 * Sends a single email to a single recipient.
-	 * 
+	 *
 	 * The $toEmailAddress and $fromEmailAddress can be basic, single email
 	 * addresses like "test@1example.org" or they can include a name and be in
 	 * the format: "Test Person <test@1example.org>".
-	 * 
+	 *
 	 * The body is an array with two optional keys: 'text' and 'html'. It may also
 	 * be an object with two properties of the same names. The value of the 'text'
 	 * property should be a basic text version of the email. The value of the
 	 * 'html' property should be a html version of the email.
-	 * 
+	 *
 	 * Options (all optional) include:
 	 *   - fromEmailAddress: the source email address the email should be sent
 	 *     from. If setting a $fromEmailAddress, it must be validated in SES.
@@ -49,63 +49,94 @@ class GylApi
 	 *   - tagReason: an array of 1 or more tags that make up the reason why the
 	 *     email was sent (so if a subscriber unsubscribes from a tag later, all
 	 *     queued items containing this tag in tagReason can be removed).
-	 * 
-	 * Example call:
+	 *
+	 * Example call (template email):
 	 * ```
 	 * try {
-	 *   sendSingleEmail(
-	 *     'test@test.localhost',
-	 *     'Test',
+	 *   $gylApi->sendSingleEmail(
 	 *     [
-	 *       'text' => 'Test',
-	 *       'html' => '<strong>Test</strong>',
-	 * 	   ],
+	 *       'toEmailAddress' => 'test@e.example.com',
+	 *       'templateId' => 'templateId'
+	 *     ],
 	 *     [
-	 *       'fromEmailAddress' => 'me@test.localhost',
-	 *       'waitInSeconds' => 60,
-	 *       'tagReason' => 'list-default',
+	 *       'fromEmailAddress' => 'me@test.localhost', // optional source email address. Default: source email address of list.
+	 *       'waitInSeconds' => 60, // optional delay. Default: no delay.
+	 *       'tagReason' => 'list-default', // optional tag. Default: no tag.
+	 *       'autoSaveUnknownSubscriber' => false // optional flag indicating if the subscirber should be saved. Defaults to false.
 	 *     ]
-	 *   ]);
+	 *   );
 	 * }
 	 * catch (Exception $ex) {
 	 *   // Handle exceptions here (all failures: including validation and server)
 	 * }
 	 * ```
-	 * 
-	 * @param string $toEmailAddress The email address to send the email to.
+	 * Example call (text/html email):
+	 * ```
+	 * try {
+	 *   $gylApi->sendSingleEmail(
+	 *     [
+	 *       'toEmailAddress' => 'test@e.example.com',
+	 *       'subject' => 'Test email',
+	 *       'body' => [
+	 *         'text' => 'Test',
+	 *         'html' => '<strong>Test</strong>'
+	 *       ]
+	 *     ],
+	 *     [
+	 *       'fromEmailAddress' => 'me@test.localhost',
+	 *       'waitInSeconds' => 60,
+	 *       'tagReason' => 'list-default',
+	 *       'autoSaveUnknownSubscriber' => false,
+	 *     ]
+	 *   );
+	 * }
+	 * catch (Exception $ex) {
+	 *   // Handle exceptions here (all failures: including validation and server)
+	 * }
+	 * ```
+	 *
+	 * @param object|array $emailData The email data in the form (array or object): [
+	 *   'toEmailAddress' => 'test@e.example.com',
+	 *   'templateId' => 'ExampleTemplate', // If body are subject are not given.
+	 *   'subject' => 'Example email', // If templateId is not given.
+	 *   'body' => [ // If templateId is not given.
+	 *      'html' => '<div>Email html...</div>',
+	 *      'text' => 'Text version of email'
+	 *   ]
+	 * ]
+	 * @param object|array $opts The options (all optional) to use when sending the email in the form (array or object): [
+	 *    'fromEmailAddress' => '', // Source email address in form "My Email <my@e.example.com>". Defaults to GYL default source email.
+	 *    'waitInSeconds' => 0, // Time in seconds to delay the email. Defaults to 0.
+	 *    'tagOnClick' => '', // Tag to assign to subscirber if they click the email. Defaults to undefined.
+	 *    'tagReason' => '', // Tag identifying the reason this email is in the queue (i.e. will be removed from the queue if the subscriber unsubscribers from that tag).
+	 * ]
 	 * @param string $subject The subject line of the email.
 	 * @param mixed $body The content of the email. See notes for options.
 	 * @param string $opts Optional. The email address to send from.
 	 */
-	function sendSingleEmail($toEmailAddress, $subject, $body, $opts = [])
+	public function sendSingleEmail($emailData, $opts = [])
 	{
 		// Force the send settings into standard shape.
-		$bodyObject = is_array($body) ? ((object) $body) : $body;
-		$optsObject = is_array($opts) ? ((object) $opts) : $opts;
-		if (isset($opts['tagReason']) && is_string($opts['tagReason'])) {
-			$opts['tagReason'] = [$opts['tagReason']];
+		$emailDataObj = is_object($emailData) ? $emailData : ((object) $emailData);
+		$optsObj = is_object($opts) ? $opts : ((object) $opts);
+		if (isset($emailDataObj->body)) {
+			$emailDataObj->body = is_object($emailDataObj->body) ? $emailDataObj->body : ((object) $emailDataObj->body);
 		}
 
 		// Validate the values of the send (basically a type check)
-		$this->validateSendSingleEmail(
-			$toEmailAddress, $subject, $bodyObject, $opts
-		);
+		$this->validateSendSingleEmail($emailDataObj, $optsObj);
 
 		// Post the single email send to the GYL API.
-		return $this->_postRequest("/send-single-email", (object) [
-			'toEmailAddress' => $toEmailAddress,
-			'subject' => $subject,
-			'body' => $bodyObject,
-			'opts' => $optsObject
-		]);
-	} 
+		$emailDataObj->opts = $optsObj;
+		return $this->_postRequest("/single-email-send", $emailDataObj);
+	}
 
 	/**
 	 * Creates a new subscriber with the given data. Options can include:
 	 * ['trigger' => ['type' => '<type>','id' => '<id>']]
 	 * @throws Exception
 	 */
-	function postSubscriber($subscriberData, $options = null)
+	public function postSubscriber($subscriberData, $options = null)
 	{
 		$this->validateSubscriber($subscriberData);
 		$subscriberFull = array_merge([
@@ -120,7 +151,7 @@ class GylApi
 			$triggerType = $trigger['type'];
 			if (!empty($trigger['id'])) {
 				$params = '?triggerType=' . urlencode($triggerType) . '&triggerId='
-					. urlencode($trigger['id']);
+				. urlencode($trigger['id']);
 			}
 		}
 		return $this->_postRequest("/subscriber$params", (object) $subscriberFull);
@@ -129,12 +160,12 @@ class GylApi
 	/**
 	 * Triggers an autoresponder for the given subscriber.
 	 */
-	function triggerAutoresponder($subscriberData, $options)
+	public function triggerAutoresponder($subscriberData, $options)
 	{
 		$trigger = $options['trigger'];
 		$triggerType = $trigger['type'];
 		$params = '?triggerType=' . urlencode($triggerType) . '&triggerId='
-			. urlencode($trigger['id']);
+		. urlencode($trigger['id']);
 		$url = "subscriber/trigger-autoresponder$params";
 		return $this->_postRequest(
 			"/subscriber/trigger-autoresponder$params",
@@ -154,7 +185,7 @@ class GylApi
 	 * }
 	 * @throws Exception
 	 */
-	function getSubscriberStatus($email, $opts = [])
+	public function getSubscriberStatus($email, $opts = [])
 	{
 		if (empty($email) || (strlen($email) > 256)) {
 			throw new Exception('Valid email required for subscriber retrieval');
@@ -178,7 +209,7 @@ class GylApi
 	 * Gets a full subscriber or returns the $fallback if no subscriber is found.
 	 * @throws Exception
 	 */
-	function getSubscriber($email, $fallback = null)
+	public function getSubscriber($email, $fallback = null)
 	{
 		$encodedEmail = urlencode($email);
 		$subscriber = null;
@@ -208,7 +239,7 @@ class GylApi
 	 *   }
 	 *
 	 */
-	function getExistsAndHasTag($email, $tag)
+	public function getExistsAndHasTag($email, $tag)
 	{
 		try {
 			$status = $this->getSubscriberStatus($email);
@@ -225,7 +256,7 @@ class GylApi
 	 * Deletes a subscriber by subscriberId.
 	 * @throws Exception
 	 */
-	function deleteSubscriber($subscriberId)
+	public function deleteSubscriber($subscriberId)
 	{
 		return $this->_deleteRequest("/subscriber?subscriberId=$subscriberId");
 	}
@@ -234,7 +265,7 @@ class GylApi
 	 * Unsubscribes a subscriber. Requires an array with a key 'email'.
 	 * @throws Exception
 	 */
-	function unsubscribe($subscriberData)
+	public function unsubscribe($subscriberData)
 	{
 		$this->validateUnsubscribe($subscriberData);
 		return $this->_postRequest(
@@ -250,7 +281,7 @@ class GylApi
 	 * If ignoreSubscriberNotFound is truthy, then no error will be thrown if
 	 * the subscriber is not found.
 	 */
-	function tag($subscriberData, $opts = [])
+	public function tag($subscriberData, $opts = [])
 	{
 		$fullOpts = array_merge(
 			[
@@ -266,7 +297,7 @@ class GylApi
 			$triggerType = $trigger['type'];
 			if (!empty($trigger['id'])) {
 				$params = '?triggerType=' . urlencode($triggerType) . '&triggerId='
-					. urlencode($trigger['id']);
+				. urlencode($trigger['id']);
 			}
 		}
 		try {
@@ -284,7 +315,7 @@ class GylApi
 	 * Untags a subscriber. Requires an array with keys 'email' and 'tag'.
 	 * @throws Exception
 	 */
-	function untag($subscriberData)
+	public function untag($subscriberData)
 	{
 		$this->validateUntag($subscriberData);
 		return $this->_postRequest('/subscriber/untag', (object) $subscriberData);
@@ -292,50 +323,58 @@ class GylApi
 
 	/**
 	 * Validates the arguments sent to the send single email function.
-	 * 
-	 * @param string $toEmailAddress
-	 * @param string $subject
-	 * @param object $body
-	 * @param object $opts
+	 *
+	 * @param object $emailDataObj
+	 * @param object $optsObj
 	 * @return void
 	 * @throws Exception
 	 */
-	protected function validateSendSingleEmail(
-		$toEmailAddress, $subject, $body, $opts
-	) {
-		if (!is_string($toEmailAddress)) {
-			throw new Exception("\$toEmailAddress must be a string");
+	protected function validateSendSingleEmail($emailDataObj, $optsObj) {
+		if (!isset($emailDataObj->toEmailAddress) || !is_string($emailDataObj->toEmailAddress)) {
+			throw new Exception('$emailData->toEmailAddress must be a string');
 		}
-		if (!is_string($subject)) {
-			throw new Exception("\$subject must be a string");
-		}
-		if (!is_object($body)) {
-			throw new Exception("\$body must be an array or object");
-		}
-		foreach (get_object_vars($bodyObject) as $key => $value) {
-			if (!(($key === 'html') || ($key === 'text'))) {
-				throw new Exception("Only 'html' and 'text' keys allowed");
+		if (empty($emailDataObj->templateId)) {
+			// Validate the sending of a text/html email
+			if (!is_string($emailDataObj->subject)) {
+				throw new Exception('$emailData->subject must be a string when templateId is not given');
 			}
-			else if (!is_string($value)) {
-				throw new Exception("Value of $key must be a string");
+			if (!is_object($emailDataObj->body)) {
+				throw new Exception('$emailData->body must be an array or object when templateId is not given');
+			}
+			foreach (get_object_vars($emailDataObj->body) as $key => $value) {
+				if (!(($key === 'html') || ($key === 'text'))) {
+					throw new Exception('Only "html" and "text" allow on $emailData->body');
+				} else if (!is_string($value)) {
+					throw new Exception("Value of $key must be a string");
+				}
+			}
+		} else {
+			// Validate the sending of a template email
+			if (!is_string($emailDataObj->templateId)) {
+				throw new Exception('$opts->templateId must be a string if it is given');
 			}
 		}
-		if (!is_object($opts)) {
-			throw new Exception("\$opts must be an array or object");
+		if (!is_object($optsObj)) {
+			throw new Exception('$opts must be an array or object');
 		}
-		if (isset($opts['fromEmailAddress']) && !is_string($opts['fromEmailAddress'])) {
-			throw new Exception("\$opts['fromEmailAddress'] must be a string");
+		if (isset($optsObj->fromEmailAddress) && !is_string($optsObj->fromEmailAddress)) {
+			throw new Exception('$opts->fromEmailAddress must be a string if it is given');
 		}
-		if (isset($opts['waitInSeconds']) && !is_int($opts['waitInSeconds'])) {
-			throw new Exception("\$opts['waitInSeconds'] must be an integer");
+		if (isset($optsObj->waitInSeconds) && !is_int($optsObj->waitInSeconds)) {
+			throw new Exception('$opts->waitInSeconds must be an integer if it is given');
 		}
-		if (isset($opts['tagReason'])) {
-			if (!is_array($opts['tagReason'])) {
-				throw new Exception("\$opts['tagReason'] must be a string or array");
+		if (isset($optsObj->tagOnClick) && !is_string($optsObj->tagOnClick)) {
+			throw new Exception('$opts->tagOnClick must be a tag string if it is given.');
+		}
+		if (isset($optsObj->tagReason)) {
+			if (!(is_array($optsObj->tagReason) || is_string($optsObj->tagReason))) {
+				throw new Exception('$opts->tagReason must be a string or array');
 			}
-			foreach ($opts['tagReason'] as $tag) {
-				if (!is_string($tag)) {
-					throw new Exception("All tags in \$opts['tagReason'] array must be strings");
+			if (is_array($optsObj->tagReason)) {
+				foreach ($optsObj->tagReason as $tag) {
+					if (!is_string($tag)) {
+						throw new Exception('All tags in $opts->tagReason array must be strings');
+					}
 				}
 			}
 		}
@@ -474,8 +513,8 @@ class GylApi
 		}
 		$params = [
 			'http' => [
-				'header'  => $this->_generateHeader($contentType),
-				'method'  => $method,
+				'header' => $this->_generateHeader($contentType),
+				'method' => $method,
 				'timeout' => 5,
 				'ignore_errors' => true,
 			]
@@ -486,7 +525,7 @@ class GylApi
 		$context = stream_context_create($params);
 		$response = file_get_contents($url, false, $context);
 		$responseStatus = (isset($http_response_header, $http_response_header[0])) ?
-			$http_response_header[0] : null;
+		$http_response_header[0] : null;
 		if (!$responseStatus) {
 			throw new Exception('Failed to interact with API: could not connect.');
 		}
